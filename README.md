@@ -1,6 +1,6 @@
 # RunTrack Pro
 
-Application web mobile-first de suivi de course (running) performante et moderne, construite avec Next.js 14+, MongoDB Atlas et React-Leaflet.
+Application web mobile-first de suivi de course (running) performante et moderne, construite avec Next.js 14+, Firebase Firestore et React-Leaflet.
 
 ## Fonctionnalites
 
@@ -15,7 +15,7 @@ Application web mobile-first de suivi de course (running) performante et moderne
 ## Stack Technique
 
 - **Framework**: Next.js 14+ (App Router)
-- **Base de donnees**: MongoDB Atlas avec Mongoose
+- **Base de donnees**: Firebase Firestore
 - **Cartographie**: Leaflet + React-Leaflet
 - **Styling**: Tailwind CSS
 - **Icones**: Lucide React
@@ -24,14 +24,14 @@ Application web mobile-first de suivi de course (running) performante et moderne
 ## Prerequis
 
 - Node.js 18+
-- Compte MongoDB Atlas (gratuit)
+- Compte Firebase (gratuit)
 - npm ou yarn
 
 ## Installation
 
 1. **Cloner le projet**
 ```bash
-git clone <repository-url>
+git clone https://github.com/denjs18/runtrack-pro.git
 cd runtrack-pro
 ```
 
@@ -45,9 +45,14 @@ npm install
 cp .env.local.example .env.local
 ```
 
-Editer `.env.local` avec votre URI MongoDB Atlas:
+Editer `.env.local` avec vos cles Firebase:
 ```
-MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/<database>?retryWrites=true&w=majority
+NEXT_PUBLIC_FIREBASE_API_KEY="your-api-key"
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="your-project.firebaseapp.com"
+NEXT_PUBLIC_FIREBASE_PROJECT_ID="your-project-id"
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="your-project.appspot.com"
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="your-sender-id"
+NEXT_PUBLIC_FIREBASE_APP_ID="your-app-id"
 ```
 
 4. **Lancer le serveur de developpement**
@@ -59,13 +64,28 @@ npm run dev
 
 Naviguer vers [http://localhost:3000](http://localhost:3000)
 
-## Configuration MongoDB Atlas
+## Configuration Firebase
 
-1. Creer un compte gratuit sur [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
-2. Creer un nouveau cluster (le tier gratuit M0 suffit)
-3. Creer un utilisateur de base de donnees
-4. Ajouter votre IP a la liste blanche (ou `0.0.0.0/0` pour Vercel)
-5. Recuperer l'URI de connexion et l'ajouter a `.env.local`
+1. Creer un compte sur [Firebase Console](https://console.firebase.google.com)
+2. Creer un nouveau projet
+3. Activer Firestore Database (mode production ou test)
+4. Aller dans Project Settings > General > Your apps
+5. Ajouter une application Web
+6. Copier les cles de configuration dans `.env.local`
+
+### Regles Firestore (optionnel)
+
+Pour securiser votre base de donnees en production:
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /activities/{activityId} {
+      allow read, write: if true; // A securiser en production
+    }
+  }
+}
+```
 
 ## Structure du Projet
 
@@ -101,10 +121,10 @@ src/
 │   ├── useGPS.ts                 # Hook GPS avec filtrage
 │   └── useActivityStats.ts       # Calculs temps reel
 ├── lib/
-│   ├── mongodb.ts                # Connexion DB singleton
+│   ├── firebase.ts               # Configuration Firebase
 │   └── utils.ts                  # Utilitaires (Haversine, formatage)
 ├── models/
-│   └── Activity.ts               # Schema Mongoose
+│   └── Activity.ts               # Interface TypeScript
 └── types/
     └── index.ts                  # Types TypeScript
 ```
@@ -113,14 +133,19 @@ src/
 
 1. Pousser le code sur GitHub
 2. Importer le projet sur [Vercel](https://vercel.com)
-3. Ajouter la variable d'environnement `MONGODB_URI`
+3. Ajouter les variables d'environnement Firebase
 4. Deployer
 
 ## Variables d'Environnement
 
 | Variable | Description | Requis |
 |----------|-------------|--------|
-| `MONGODB_URI` | URI de connexion MongoDB Atlas | Oui |
+| `NEXT_PUBLIC_FIREBASE_API_KEY` | Cle API Firebase | Oui |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Domaine d'authentification | Oui |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | ID du projet Firebase | Oui |
+| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Bucket de stockage | Oui |
+| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | ID de messagerie | Oui |
+| `NEXT_PUBLIC_FIREBASE_APP_ID` | ID de l'application | Oui |
 
 ## Fonctionnalites Techniques
 
@@ -136,7 +161,7 @@ src/
 ### Optimisations
 - Throttle des mises a jour carte (1/s) pour economiser la batterie
 - Import dynamique de Leaflet (pas de SSR)
-- Connexion MongoDB en singleton
+- Firebase SDK optimise pour le web
 
 ## Scripts
 

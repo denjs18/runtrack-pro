@@ -52,7 +52,7 @@ export default function ActivitiesPage() {
 
       if (!response.ok) throw new Error('Failed to delete');
 
-      setActivities((prev) => prev.filter((a) => a._id !== id));
+      setActivities((prev) => prev.filter((a) => a.id !== id));
       showToast('Course supprimée', 'success');
     } catch {
       showToast('Erreur lors de la suppression', 'error');
@@ -161,7 +161,7 @@ export default function ActivitiesPage() {
         <div className="space-y-4">
           {activities.map((activity) => (
             <ActivityCard
-              key={activity._id}
+              key={activity.id}
               activity={activity}
               onDelete={handleDelete}
             />

@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Activity from '@/models/Activity';
+import {
+  doc,
+  getDoc,
+  deleteDoc,
+  updateDoc,
+  Timestamp,
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { IActivity, defaultStats } from '@/models/Activity';
+
+const COLLECTION_NAME = 'activities';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -8,17 +17,29 @@ interface Params {
 
 export async function GET(request: NextRequest, { params }: Params) {
   try {
-    await connectDB();
-
     const { id } = await params;
-    const activity = await Activity.findById(id).lean();
+    const docRef = doc(db, COLLECTION_NAME, id);
+    const docSnap = await getDoc(docRef);
 
-    if (!activity) {
+    if (!docSnap.exists()) {
       return NextResponse.json(
         { error: 'Activity not found' },
         { status: 404 }
       );
     }
+
+    const data = docSnap.data();
+    const activity: IActivity = {
+      id: docSnap.id,
+      userId: data.userId,
+      name: data.name,
+      startTime: data.startTime?.toDate?.() || data.startTime,
+      endTime: data.endTime?.toDate?.() || data.endTime,
+      points: data.points || [],
+      stats: data.stats || defaultStats,
+      createdAt: data.createdAt?.toDate?.() || data.createdAt,
+      updatedAt: data.updatedAt?.toDate?.() || data.updatedAt,
+    };
 
     return NextResponse.json({ activity });
   } catch (error) {
@@ -32,17 +53,18 @@ export async function GET(request: NextRequest, { params }: Params) {
 
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    await connectDB();
-
     const { id } = await params;
-    const activity = await Activity.findByIdAndDelete(id);
+    const docRef = doc(db, COLLECTION_NAME, id);
+    const docSnap = await getDoc(docRef);
 
-    if (!activity) {
+    if (!docSnap.exists()) {
       return NextResponse.json(
         { error: 'Activity not found' },
         { status: 404 }
       );
     }
+
+    await deleteDoc(docRef);
 
     return NextResponse.json({ message: 'Activity deleted successfully' });
   } catch (error) {
@@ -56,29 +78,44 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    await connectDB();
-
     const { id } = await params;
     const body = await request.json();
 
-    // Only allow updating name
-    const updateData: { name?: string } = {};
-    if (body.name) {
-      updateData.name = body.name;
-    }
+    const docRef = doc(db, COLLECTION_NAME, id);
+    const docSnap = await getDoc(docRef);
 
-    const activity = await Activity.findByIdAndUpdate(
-      id,
-      { $set: updateData },
-      { new: true }
-    ).lean();
-
-    if (!activity) {
+    if (!docSnap.exists()) {
       return NextResponse.json(
         { error: 'Activity not found' },
         { status: 404 }
       );
     }
+
+    // Only allow updating name
+    const updateData: { name?: string; updatedAt: Timestamp } = {
+      updatedAt: Timestamp.now(),
+    };
+
+    if (body.name) {
+      updateData.name = body.name;
+    }
+
+    await updateDoc(docRef, updateData);
+
+    const updatedDoc = await getDoc(docRef);
+    const data = updatedDoc.data()!;
+
+    const activity: IActivity = {
+      id: updatedDoc.id,
+      userId: data.userId,
+      name: data.name,
+      startTime: data.startTime?.toDate?.() || data.startTime,
+      endTime: data.endTime?.toDate?.() || data.endTime,
+      points: data.points || [],
+      stats: data.stats || defaultStats,
+      createdAt: data.createdAt?.toDate?.() || data.createdAt,
+      updatedAt: data.updatedAt?.toDate?.() || data.updatedAt,
+    };
 
     return NextResponse.json({ activity });
   } catch (error) {

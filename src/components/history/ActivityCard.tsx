@@ -15,13 +15,13 @@ export default function ActivityCard({ activity, onDelete }: ActivityCardProps) 
   const handleDelete = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (onDelete && activity._id) {
-      onDelete(activity._id);
+    if (onDelete && activity.id) {
+      onDelete(activity.id);
     }
   };
 
   return (
-    <Link href={`/activities/${activity._id}`}>
+    <Link href={`/activities/${activity.id}`}>
       <div className="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100 dark:border-gray-700 group">
         {/* Mini Map */}
         <div className="h-32 relative">

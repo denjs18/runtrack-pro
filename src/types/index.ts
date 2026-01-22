@@ -19,7 +19,7 @@ export interface ActivityStats {
 }
 
 export interface Activity {
-  _id?: string;
+  id?: string;
   userId: string;
   name: string;
   startTime: Date;
