@@ -75,18 +75,13 @@ out skel qt;`;
     headers: { 'Content-Type': 'text/plain' },
   });
 
-  if (!response.ok) {
-    throw new Error(`Overpass API error: ${response.status}`);
-  }
+  if (!response.ok) throw new Error(`Overpass API error: ${response.status}`);
 
   const data = await response.json();
 
-  // Build node coordinate map
   const nodeMap = new Map<number, [number, number]>();
   for (const el of data.elements) {
-    if (el.type === 'node') {
-      nodeMap.set(el.id, [el.lat, el.lon]);
-    }
+    if (el.type === 'node') nodeMap.set(el.id, [el.lat, el.lon]);
   }
 
   const paths: OsmPath[] = [];
@@ -103,12 +98,11 @@ out skel qt;`;
     }
   }
 
-  // Sort: good paths on top (rendered last = visible)
   paths.sort((a, b) => a.score - b.score);
-
   return paths;
 }
 
+/** Move a point by distanceKm in the given bearing (degrees, 0 = North) */
 function offsetPoint(
   lat: number,
   lng: number,
@@ -134,38 +128,118 @@ function offsetPoint(
   return [(lat2 * 180) / Math.PI, (lng2 * 180) / Math.PI];
 }
 
-export async function generateCircularRoute(
+/** Generate waypoints evenly spaced around a circle, starting at bearingOffset */
+function circleWaypoints(
   lat: number,
   lng: number,
-  targetKm: number
-): Promise<GeneratedRoute | null> {
-  // Radius of circle so that circumference ≈ targetKm
-  const radius = targetKm / (2 * Math.PI);
+  radiusKm: number,
+  n: number,
+  bearingOffset: number
+): [number, number][] {
+  return Array.from({ length: n }, (_, i) =>
+    offsetPoint(lat, lng, radiusKm, bearingOffset + (360 / n) * i)
+  );
+}
 
-  // 4 waypoints around the circle (N → E → S → W)
-  const bearings = [0, 90, 180, 270];
-  const waypoints = bearings.map((b) => offsetPoint(lat, lng, radius, b));
-
-  // OSRM route: start → wp0 → wp1 → wp2 → wp3 → start
-  const allPoints: [number, number][] = [[lat, lng], ...waypoints, [lat, lng]];
+/** Call OSRM foot routing and return the route */
+async function osrmRoute(
+  allPoints: [number, number][]
+): Promise<{ distance: number; duration: number; coords: [number, number][] } | null> {
   const coordsStr = allPoints.map(([wlat, wlng]) => `${wlng},${wlat}`).join(';');
-
   const url = `https://router.project-osrm.org/route/v1/foot/${coordsStr}?overview=full&geometries=geojson`;
 
-  const response = await fetch(url);
-  if (!response.ok) throw new Error('OSRM routing failed');
-
-  const data = await response.json();
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const data = await res.json();
   if (!data.routes?.length) return null;
 
   const route = data.routes[0];
-  const coords: [number, number][] = route.geometry.coordinates.map(
-    ([rLng, rLat]: [number, number]) => [rLat, rLng]
-  );
-
   return {
-    coords,
     distance: route.distance,
     duration: route.duration,
+    coords: (route.geometry.coordinates as [number, number][]).map(
+      ([rLng, rLat]) => [rLat, rLng]
+    ),
   };
+}
+
+/**
+ * Generate a single circular route, adjusting radius iteratively so the
+ * actual OSRM distance matches targetKm as closely as possible.
+ */
+async function generateSingleRoute(
+  lat: number,
+  lng: number,
+  targetKm: number,
+  numWaypoints: number,
+  bearingOffset: number,
+  label: string
+): Promise<GeneratedRoute | null> {
+  // Initial radius: account for the fact that street routing is ~30% longer
+  // than straight-line distances (street network detour factor ≈ 1.3)
+  let radius = targetKm / (2 * Math.PI * 1.3);
+
+  for (let iter = 0; iter < 3; iter++) {
+    const waypoints = circleWaypoints(lat, lng, radius, numWaypoints, bearingOffset);
+    const allPoints: [number, number][] = [[lat, lng], ...waypoints, [lat, lng]];
+
+    const result = await osrmRoute(allPoints);
+    if (!result) return null;
+
+    const actualKm = result.distance / 1000;
+    const error = Math.abs(actualKm - targetKm) / targetKm;
+
+    // Close enough (within 8%) or last iteration → return
+    if (error < 0.08 || iter === 2) {
+      return {
+        id: `${label}-${bearingOffset}-${numWaypoints}`,
+        label,
+        coords: result.coords,
+        distance: result.distance,
+        duration: result.duration,
+      };
+    }
+
+    // Adjust radius proportionally to the distance error
+    radius = radius * (targetKm / actualKm);
+  }
+
+  return null;
+}
+
+/**
+ * Generate multiple circular routes with different shapes and orientations,
+ * all targeting targetKm, sorted by closeness to that distance.
+ */
+export async function generateMultipleRoutes(
+  lat: number,
+  lng: number,
+  targetKm: number
+): Promise<GeneratedRoute[]> {
+  const configs = [
+    { n: 4, bearing: 0,   label: 'Circuit A' },
+    { n: 4, bearing: 45,  label: 'Circuit B' },
+    { n: 3, bearing: 0,   label: 'Circuit C' },
+    { n: 3, bearing: 60,  label: 'Circuit D' },
+    { n: 4, bearing: 22,  label: 'Circuit E' },
+  ];
+
+  const results = await Promise.allSettled(
+    configs.map(({ n, bearing, label }) =>
+      generateSingleRoute(lat, lng, targetKm, n, bearing, label)
+    )
+  );
+
+  const routes = results
+    .filter(
+      (r): r is PromiseFulfilledResult<GeneratedRoute> =>
+        r.status === 'fulfilled' && r.value !== null
+    )
+    .map((r) => r.value)
+    .sort(
+      (a, b) =>
+        Math.abs(a.distance - targetKm * 1000) - Math.abs(b.distance - targetKm * 1000)
+    );
+
+  return routes;
 }

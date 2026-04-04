@@ -9,7 +9,7 @@ import type { OsmPath, GeneratedRoute } from './types';
 const UserPositionIcon = L.divIcon({
   className: 'user-position-marker',
   html: `
-    <div class="relative" style="width:20px;height:20px">
+    <div style="width:20px;height:20px;position:relative">
       <div style="width:16px;height:16px;background:#3b82f6;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);position:absolute;top:2px;left:2px"></div>
       <div style="width:16px;height:16px;background:#3b82f6;border-radius:50%;position:absolute;top:2px;left:2px;animation:ping 1.5s cubic-bezier(0,0,0.2,1) infinite;opacity:0.5"></div>
     </div>
@@ -17,6 +17,9 @@ const UserPositionIcon = L.divIcon({
   iconSize: [20, 20],
   iconAnchor: [10, 10],
 });
+
+// Colors for the different generated circuits
+const ROUTE_COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#06b6d4', '#8b5cf6'];
 
 function MapController({
   userPosition,
@@ -51,7 +54,8 @@ function MapController({
 interface RouteFinderMapProps {
   userPosition: [number, number] | null;
   paths: OsmPath[];
-  generatedRoute: GeneratedRoute | null;
+  routes: GeneratedRoute[];
+  selectedRouteId: string | null;
   searchRadius: number;
   shouldCenter: boolean;
   onCentered: () => void;
@@ -61,7 +65,8 @@ interface RouteFinderMapProps {
 export default function RouteFinderMap({
   userPosition,
   paths,
-  generatedRoute,
+  routes,
+  selectedRouteId,
   searchRadius,
   shouldCenter,
   onCentered,
@@ -113,27 +118,31 @@ export default function RouteFinderMap({
             pathOptions={{
               color: path.color,
               weight: path.weight,
-              opacity: 0.85,
-              lineCap: 'round',
-              lineJoin: 'round',
-            }}
-          >
-          </Polyline>
-        ))}
-
-        {/* Generated circular route */}
-        {generatedRoute && (
-          <Polyline
-            positions={generatedRoute.coords}
-            pathOptions={{
-              color: '#6366f1',
-              weight: 5,
-              opacity: 0.95,
+              opacity: 0.8,
               lineCap: 'round',
               lineJoin: 'round',
             }}
           />
-        )}
+        ))}
+
+        {/* Generated routes — unselected ones dimmed, selected one bold */}
+        {routes.map((route, i) => {
+          const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
+          const isSelected = route.id === selectedRouteId;
+          return (
+            <Polyline
+              key={route.id}
+              positions={route.coords}
+              pathOptions={{
+                color,
+                weight: isSelected ? 6 : 3,
+                opacity: isSelected ? 1 : 0.35,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }}
+            />
+          );
+        })}
 
         {/* User position marker */}
         {userPosition && (
