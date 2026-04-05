@@ -129,8 +129,8 @@ export default function RouteFinderComponent() {
       setRoutes([]);
       setSelectedRouteId(null);
       lastFetchRef.current = { lat, lng, radius: searchRadius, runningOnly };
-    } catch {
-      setError('Erreur lors du chargement des chemins. Réessayez.');
+    } catch (e) {
+      setError((e as Error).message || 'Erreur lors du chargement des chemins. Réessayez.');
     } finally {
       setIsLoadingPaths(false);
     }
@@ -152,8 +152,8 @@ export default function RouteFinderComponent() {
       if (!generated.length) throw new Error('Aucun circuit trouvé.');
       setRoutes(generated);
       setSelectedRouteId(generated[0].id);
-    } catch {
-      setError('Impossible de générer les circuits. Essayez une autre distance.');
+    } catch (e) {
+      setError((e as Error).message || 'Impossible de générer les circuits. Essayez une autre distance.');
     } finally {
       setIsGenerating(false);
     }

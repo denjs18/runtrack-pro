@@ -61,7 +61,10 @@ export async function fetchRunningPaths(
     ? '^(footway|path|track|pedestrian|living_street|cycleway|residential)$'
     : '^(footway|path|track|pedestrian|living_street|cycleway|residential|service|unclassified|tertiary|secondary|primary)$';
 
-  const query = `[out:json][timeout:30];
+  // Scale server-side timeout with radius, cap at 60s
+  const overpassTimeout = radiusMeters <= 2000 ? 25 : radiusMeters <= 5000 ? 45 : 60;
+
+  const query = `[out:json][timeout:${overpassTimeout}];
 (
   way["highway"~"${highwayFilter}"](around:${radiusMeters},${lat},${lng});
 );
@@ -69,13 +72,42 @@ out body;
 >;
 out skel qt;`;
 
-  const response = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    body: query,
-    headers: { 'Content-Type': 'text/plain' },
-  });
+  // Client-side abort after overpassTimeout + 10s buffer
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), (overpassTimeout + 10) * 1000);
 
-  if (!response.ok) throw new Error(`Overpass API error: ${response.status}`);
+  let response: Response;
+  try {
+    // Try primary endpoint first, fall back to mirror
+    response = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      body: query,
+      headers: { 'Content-Type': 'text/plain' },
+      signal: controller.signal,
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    if ((e as Error).name === 'AbortError') {
+      throw new Error('Timeout : zone trop grande, essayez un rayon plus petit.');
+    }
+    // Try mirror on network failure
+    try {
+      response = await fetch('https://overpass.kumi.systems/api/interpreter', {
+        method: 'POST',
+        body: query,
+        headers: { 'Content-Type': 'text/plain' },
+      });
+    } catch {
+      throw new Error('Serveur Overpass inaccessible. Vérifiez votre connexion.');
+    }
+  }
+  clearTimeout(timer);
+
+  if (!response.ok) {
+    if (response.status === 429) throw new Error('Trop de requêtes, patientez quelques secondes.');
+    if (response.status === 504) throw new Error('Timeout serveur : réduisez le rayon de recherche.');
+    throw new Error(`Erreur serveur (${response.status}). Réessayez.`);
+  }
 
   const data = await response.json();
 
