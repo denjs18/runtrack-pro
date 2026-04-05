@@ -345,7 +345,7 @@ export default function RouteFinderComponent() {
                   return (
                     <button
                       key={route.id}
-                      onClick={() => setSelectedRouteId(route.id)}
+                      onClick={() => { setSelectedRouteId(route.id); setShowPanel(false); }}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors text-left ${
                         isSelected
                           ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-900/20'
@@ -378,8 +378,10 @@ export default function RouteFinderComponent() {
                         </div>
                       </div>
 
-                      {isSelected && (
+                      {isSelected ? (
                         <CheckCircle2 className="w-4 h-4 text-indigo-500 flex-none" />
+                      ) : (
+                        <span className="text-xs text-gray-400 dark:text-gray-500 flex-none">Voir ↑</span>
                       )}
                     </button>
                   );

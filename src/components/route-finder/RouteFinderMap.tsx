@@ -135,8 +135,8 @@ export default function RouteFinderMap({
               positions={route.coords}
               pathOptions={{
                 color,
-                weight: isSelected ? 6 : 3,
-                opacity: isSelected ? 1 : 0.35,
+                weight: isSelected ? 6 : 2.5,
+                opacity: isSelected ? 1 : 0.5,
                 lineCap: 'round',
                 lineJoin: 'round',
               }}
