@@ -2,40 +2,43 @@
 
 import dynamic from 'next/dynamic';
 import { useState, useCallback, useRef } from 'react';
-import { Loader2, Navigation, RefreshCw, Route, MapPin, Filter, ChevronDown, ChevronUp } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import {
+  Loader2, Navigation, RefreshCw, Route, Filter,
+  CheckCircle2, Play, ChevronUp, ChevronDown, X,
+} from 'lucide-react';
 import type { OsmPath, GeneratedRoute } from './types';
-import { fetchRunningPaths, generateCircularRoute } from './routeUtils';
+import { fetchRunningPaths, generateMultipleRoutes } from './routeUtils';
+import { saveCircuit } from '@/hooks/useSelectedCircuit';
 
 const RouteFinderMap = dynamic(() => import('./RouteFinderMap'), {
   ssr: false,
   loading: () => (
     <div className="flex items-center justify-center h-full bg-gray-100 dark:bg-gray-800">
-      <div className="flex flex-col items-center gap-3">
-        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-        <span className="text-sm text-gray-500">Chargement de la carte...</span>
-      </div>
+      <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
     </div>
   ),
 });
 
+const DISTANCE_OPTIONS = [
+  { label: '3 km',  value: 3 },
+  { label: '5 km',  value: 5 },
+  { label: '8 km',  value: 8 },
+  { label: '10 km', value: 10 },
+  { label: '15 km', value: 15 },
+];
+
 const RADIUS_OPTIONS = [
-  { label: '500 m', value: 500 },
   { label: '1 km', value: 1000 },
   { label: '2 km', value: 2000 },
   { label: '3 km', value: 3000 },
 ];
 
-const DISTANCE_OPTIONS = [
-  { label: '3 km', value: 3 },
-  { label: '5 km', value: 5 },
-  { label: '8 km', value: 8 },
-  { label: '10 km', value: 10 },
-  { label: '15 km', value: 15 },
-];
+// Must match ROUTE_COLORS in RouteFinderMap.tsx
+const ROUTE_COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#06b6d4', '#8b5cf6'];
 
 function formatDistance(meters: number) {
-  if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
-  return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(1)} km`;
 }
 
 function formatDuration(seconds: number) {
@@ -45,27 +48,26 @@ function formatDuration(seconds: number) {
   return `${m} min`;
 }
 
-const LEGEND = [
-  { color: '#16a34a', label: 'Idéal (chemin piéton, sentier)' },
-  { color: '#84cc16', label: 'Bon (piste cyclable, zone calme)' },
-  { color: '#ca8a04', label: 'Acceptable (rue résidentielle)' },
-  { color: '#dc2626', label: 'À éviter (grande route)' },
-];
+function distanceDeviation(actual: number, targetKm: number) {
+  return Math.round(((actual / 1000 - targetKm) / targetKm) * 100);
+}
 
 export default function RouteFinderComponent() {
-  const [userPosition, setUserPosition] = useState<[number, number] | null>(null);
-  const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
-  const [paths, setPaths] = useState<OsmPath[]>([]);
-  const [generatedRoute, setGeneratedRoute] = useState<GeneratedRoute | null>(null);
+  const [userPosition, setUserPosition]     = useState<[number, number] | null>(null);
+  const [mapCenter, setMapCenter]           = useState<[number, number] | null>(null);
+  const [paths, setPaths]                   = useState<OsmPath[]>([]);
+  const [routes, setRoutes]                 = useState<GeneratedRoute[]>([]);
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [isLoadingPaths, setIsLoadingPaths] = useState(false);
-  const [isGeneratingRoute, setIsGeneratingRoute] = useState(false);
-  const [isLocating, setIsLocating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [searchRadius, setSearchRadius] = useState(2000);
+  const [isGenerating, setIsGenerating]     = useState(false);
+  const [isLocating, setIsLocating]         = useState(false);
+  const [error, setError]                   = useState<string | null>(null);
+  const [searchRadius, setSearchRadius]     = useState(2000);
   const [selectedDistance, setSelectedDistance] = useState(5);
-  const [runningOnly, setRunningOnly] = useState(true);
-  const [shouldCenter, setShouldCenter] = useState(false);
-  const [showPanel, setShowPanel] = useState(true);
+  const [runningOnly, setRunningOnly]       = useState(true);
+  const [shouldCenter, setShouldCenter]     = useState(false);
+  const [sheetOpen, setSheetOpen]           = useState(false);
+  const [showFilters, setShowFilters]       = useState(false);
 
   const lastFetchRef = useRef<{ lat: number; lng: number; radius: number; runningOnly: boolean } | null>(null);
 
@@ -78,8 +80,7 @@ export default function RouteFinderComponent() {
     setError(null);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const { latitude, longitude } = pos.coords;
-        const position: [number, number] = [latitude, longitude];
+        const position: [number, number] = [pos.coords.latitude, pos.coords.longitude];
         setUserPosition(position);
         setMapCenter(position);
         setShouldCenter(true);
@@ -89,7 +90,7 @@ export default function RouteFinderComponent() {
         setError(
           err.code === 1
             ? 'Accès à la position refusé. Vérifiez les permissions.'
-            : 'Impossible d\'obtenir votre position.'
+            : "Impossible d'obtenir votre position."
         );
         setIsLocating(false);
       },
@@ -99,13 +100,9 @@ export default function RouteFinderComponent() {
 
   const loadPaths = useCallback(async () => {
     const center = mapCenter ?? userPosition;
-    if (!center) {
-      setError('Localisez-vous d\'abord pour charger les chemins.');
-      return;
-    }
+    if (!center) { setError("Localisez-vous d'abord."); return; }
     const [lat, lng] = center;
 
-    // Avoid redundant fetches
     const last = lastFetchRef.current;
     if (
       last &&
@@ -113,245 +110,308 @@ export default function RouteFinderComponent() {
       Math.abs(last.lng - lng) < 0.0005 &&
       last.radius === searchRadius &&
       last.runningOnly === runningOnly
-    ) {
-      return;
-    }
+    ) return;
 
     setIsLoadingPaths(true);
     setError(null);
     try {
       const result = await fetchRunningPaths(lat, lng, searchRadius, runningOnly);
       setPaths(result);
-      setGeneratedRoute(null);
+      setRoutes([]);
+      setSelectedRouteId(null);
       lastFetchRef.current = { lat, lng, radius: searchRadius, runningOnly };
     } catch {
-      setError('Erreur lors du chargement des chemins. Réessayez dans quelques secondes.');
+      setError('Erreur lors du chargement des chemins. Réessayez.');
     } finally {
       setIsLoadingPaths(false);
     }
   }, [mapCenter, userPosition, searchRadius, runningOnly]);
 
-  const handleGenerateRoute = useCallback(async () => {
-    const start = userPosition;
-    if (!start) {
-      setError('Localisez-vous d\'abord pour générer un circuit.');
-      return;
-    }
-    setIsGeneratingRoute(true);
+  const handleGenerateRoutes = useCallback(async () => {
+    if (!userPosition) { setError("Localisez-vous d'abord."); return; }
+    setIsGenerating(true);
     setError(null);
+    setRoutes([]);
+    setSelectedRouteId(null);
+    setSheetOpen(true);
     try {
-      const route = await generateCircularRoute(start[0], start[1], selectedDistance);
-      if (!route) throw new Error('Aucun itinéraire trouvé.');
-      setGeneratedRoute(route);
+      const generated = await generateMultipleRoutes(userPosition[0], userPosition[1], selectedDistance);
+      if (!generated.length) throw new Error('Aucun circuit trouvé.');
+      setRoutes(generated);
+      setSelectedRouteId(generated[0].id);
     } catch {
-      setError('Impossible de générer le circuit. Essayez une autre distance.');
+      setError('Impossible de générer les circuits. Essayez une autre distance.');
     } finally {
-      setIsGeneratingRoute(false);
+      setIsGenerating(false);
     }
   }, [userPosition, selectedDistance]);
 
+  const selectedRoute = routes.find((r) => r.id === selectedRouteId) ?? null;
+  const router = useRouter();
+
+  const handleRunCircuit = useCallback(() => {
+    if (!selectedRoute) return;
+    saveCircuit({
+      id: selectedRoute.id,
+      coords: selectedRoute.coords,
+      distance: selectedRoute.distance,
+      duration: selectedRoute.duration,
+      label: selectedRoute.label,
+    });
+    router.push('/');
+  }, [selectedRoute, router]);
+
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900">
-      {/* Header */}
-      <div className="flex-none px-4 pt-4 pb-2 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-green-500 rounded-xl flex items-center justify-center">
-              <Route className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <h1 className="text-base font-bold text-gray-900 dark:text-white">Chercher des circuits</h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Chemins adaptés à la course</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={locateUser}
-              disabled={isLocating}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-medium disabled:opacity-50"
-            >
-              {isLocating ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Navigation className="w-3.5 h-3.5" />
-              )}
-              {isLocating ? 'Localisation...' : 'Me localiser'}
-            </button>
-          </div>
-        </div>
-
-        {/* Error */}
-        {error && (
-          <div className="mt-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg text-xs text-red-600 dark:text-red-400">
-            {error}
-          </div>
-        )}
-      </div>
-
-      {/* Map */}
-      <div className="flex-1 relative min-h-0">
+    <div className="relative h-full overflow-hidden">
+      {/* ── Full-screen map ── */}
+      <div className="absolute inset-0">
         <RouteFinderMap
           userPosition={userPosition}
           paths={paths}
-          generatedRoute={generatedRoute}
+          routes={routes}
+          selectedRouteId={selectedRouteId}
           searchRadius={searchRadius}
           shouldCenter={shouldCenter}
           onCentered={() => setShouldCenter(false)}
           onMapMoved={(lat, lng) => setMapCenter([lat, lng])}
         />
+      </div>
 
-        {/* Floating legend */}
-        <div className="absolute top-3 right-3 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm rounded-xl px-3 py-2 shadow-lg z-[1000] text-xs">
-          <div className="font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Légende</div>
-          {LEGEND.map((item) => (
-            <div key={item.color} className="flex items-center gap-2 mb-1">
-              <div className="w-8 h-2 rounded-full flex-none" style={{ background: item.color }} />
-              <span className="text-gray-600 dark:text-gray-400 leading-tight">{item.label}</span>
-            </div>
-          ))}
-          {generatedRoute && (
-            <div className="flex items-center gap-2 mt-1 pt-1 border-t border-gray-200 dark:border-gray-700">
-              <div className="w-8 h-2 rounded-full flex-none bg-indigo-500" />
-              <span className="text-gray-600 dark:text-gray-400">Circuit généré</span>
-            </div>
-          )}
+      {/* ── Top bar: distance chips + actions ── */}
+      <div className="absolute top-3 left-0 right-0 px-3 z-[1000] flex flex-col gap-2 pointer-events-none">
+        {/* Distance chips */}
+        <div className="flex items-center gap-2 pointer-events-auto">
+          <div className="flex gap-1.5 overflow-x-auto no-scrollbar flex-1">
+            {DISTANCE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setSelectedDistance(opt.value)}
+                className={`flex-none px-3 py-1.5 rounded-full text-sm font-semibold shadow transition-colors ${
+                  selectedDistance === opt.value
+                    ? 'bg-orange-500 text-white shadow-orange-200'
+                    : 'bg-white/95 text-gray-700 dark:bg-gray-800/95 dark:text-gray-200'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Filter toggle */}
+          <button
+            onClick={() => setShowFilters((v) => !v)}
+            className={`flex-none p-2 rounded-full shadow transition-colors pointer-events-auto ${
+              showFilters ? 'bg-orange-500 text-white' : 'bg-white/95 text-gray-600 dark:bg-gray-800/95 dark:text-gray-300'
+            }`}
+          >
+            <Filter className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Generated route info */}
-        {generatedRoute && (
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-indigo-600 text-white rounded-full px-4 py-2 shadow-lg z-[1000] flex items-center gap-3 text-sm font-medium">
-            <Route className="w-4 h-4" />
-            <span>{formatDistance(generatedRoute.distance)}</span>
-            <span className="opacity-75">·</span>
-            <span>{formatDuration(generatedRoute.duration)}</span>
-            <button
-              onClick={() => setGeneratedRoute(null)}
-              className="ml-1 opacity-70 hover:opacity-100 text-xs"
-            >
-              ✕
+        {/* Expanded filter panel */}
+        {showFilters && (
+          <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm rounded-2xl px-4 py-3 shadow-lg pointer-events-auto space-y-3">
+            <div>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">Rayon de recherche</p>
+              <div className="flex gap-2">
+                {RADIUS_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setSearchRadius(opt.value)}
+                    className={`flex-1 py-1.5 rounded-xl text-xs font-medium transition-colors ${
+                      searchRadius === opt.value
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setRunningOnly((v) => !v)}
+                className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${
+                  runningOnly
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                }`}
+              >
+                {runningOnly ? '✓ Chemins piétons uniquement' : 'Tous les chemins'}
+              </button>
+              <button
+                onClick={loadPaths}
+                disabled={isLoadingPaths}
+                className="flex items-center gap-1.5 px-4 py-2 bg-green-500 text-white rounded-xl text-xs font-semibold disabled:opacity-50"
+              >
+                {isLoadingPaths ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                Charger
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Error banner */}
+        {error && (
+          <div className="flex items-center gap-2 bg-red-50/95 border border-red-200 rounded-xl px-3 py-2.5 pointer-events-auto">
+            <p className="text-xs text-red-600 flex-1">{error}</p>
+            <button onClick={() => setError(null)}>
+              <X className="w-3.5 h-3.5 text-red-400" />
             </button>
           </div>
         )}
       </div>
 
-      {/* Bottom panel */}
-      <div className="flex-none bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800">
-        {/* Panel toggle */}
+      {/* ── Floating action buttons (right side) ── */}
+      <div className="absolute right-3 bottom-48 z-[1000] flex flex-col gap-3">
+        {/* Locate me */}
         <button
-          onClick={() => setShowPanel((v) => !v)}
-          className="w-full flex items-center justify-center py-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          onClick={locateUser}
+          disabled={isLocating}
+          className="w-12 h-12 bg-white dark:bg-gray-800 rounded-full shadow-lg flex items-center justify-center text-orange-500 disabled:opacity-50 active:scale-95 transition-transform"
         >
-          {showPanel ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+          {isLocating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Navigation className="w-5 h-5" />}
         </button>
+      </div>
 
-        {showPanel && (
-          <div className="px-4 pb-4 space-y-4">
-            {/* Search radius + filter toggle */}
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex-1">
-                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5" />
-                  Rayon de recherche
-                </label>
-                <div className="flex gap-1.5">
-                  {RADIUS_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setSearchRadius(opt.value)}
-                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                        searchRadius === opt.value
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+      {/* ── Bottom sheet ── */}
+      <div
+        className={`absolute bottom-0 left-0 right-0 bg-white dark:bg-gray-900 rounded-t-3xl shadow-2xl z-[1000] transition-all duration-300 ${
+          sheetOpen ? 'translate-y-0' : 'translate-y-[calc(100%-80px)]'
+        }`}
+      >
+        {/* Drag handle + header */}
+        <button
+          onClick={() => setSheetOpen((v) => !v)}
+          className="w-full flex flex-col items-center pt-3 pb-2"
+        >
+          <div className="w-10 h-1 bg-gray-200 dark:bg-gray-700 rounded-full mb-3" />
+          <div className="flex items-center justify-between w-full px-5">
+            <div className="flex items-center gap-2">
+              <Route className="w-4 h-4 text-orange-500" />
+              <span className="text-sm font-bold text-gray-900 dark:text-white">
+                {routes.length > 0
+                  ? `${routes.length} circuit${routes.length > 1 ? 's' : ''} · ${selectedDistance} km`
+                  : isGenerating
+                  ? 'Génération en cours...'
+                  : 'Trouver un circuit'}
+              </span>
             </div>
-
-            {/* Running-only filter + load button */}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setRunningOnly((v) => !v)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                  runningOnly
-                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                }`}
-              >
-                <Filter className="w-3.5 h-3.5" />
-                {runningOnly ? 'Course uniquement' : 'Tous les chemins'}
-              </button>
-
-              <button
-                onClick={loadPaths}
-                disabled={isLoadingPaths}
-                className="flex-1 flex items-center justify-center gap-2 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
-              >
-                {isLoadingPaths ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="w-4 h-4" />
-                )}
-                {isLoadingPaths ? 'Chargement...' : 'Charger les chemins'}
-              </button>
-            </div>
-
-            {/* Circuit generator */}
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 flex items-center gap-1">
-                <Route className="w-3.5 h-3.5" />
-                Générer un circuit en boucle
-              </label>
-              <div className="flex gap-2">
-                <div className="flex gap-1.5 flex-1">
-                  {DISTANCE_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setSelectedDistance(opt.value)}
-                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                        selectedDistance === opt.value
-                          ? 'bg-indigo-500 text-white'
-                          : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  onClick={handleGenerateRoute}
-                  disabled={isGeneratingRoute || !userPosition}
-                  className="px-4 py-1.5 bg-indigo-500 text-white rounded-lg text-sm font-semibold disabled:opacity-50 whitespace-nowrap flex items-center gap-1.5"
-                >
-                  {isGeneratingRoute ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Route className="w-4 h-4" />
-                  )}
-                  {isGeneratingRoute ? '...' : 'Go'}
-                </button>
-              </div>
-              {!userPosition && (
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                  Localisez-vous pour générer un circuit
-                </p>
-              )}
-            </div>
-
-            {/* Path count */}
-            {paths.length > 0 && (
-              <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                {paths.length} segment{paths.length > 1 ? 's' : ''} chargé{paths.length > 1 ? 's' : ''}
-                {' · '}
-                {paths.filter((p) => p.score >= 0.7).length} idéaux pour courir
-              </div>
+            {sheetOpen ? (
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            ) : (
+              <ChevronUp className="w-4 h-4 text-gray-400" />
             )}
           </div>
-        )}
+        </button>
+
+        {/* Sheet content */}
+        <div className="px-4 pb-6 max-h-[60vh] overflow-y-auto">
+          {/* Generate button when no routes */}
+          {!isGenerating && routes.length === 0 && (
+            <button
+              onClick={handleGenerateRoutes}
+              disabled={!userPosition}
+              className="w-full py-4 bg-orange-500 text-white rounded-2xl text-base font-bold flex items-center justify-center gap-2 shadow-md active:scale-95 transition-transform disabled:opacity-40 mb-4"
+            >
+              <Route className="w-5 h-5" />
+              Générer des circuits ({selectedDistance} km)
+            </button>
+          )}
+
+          {!userPosition && routes.length === 0 && (
+            <p className="text-center text-sm text-gray-400 pb-2">
+              Utilisez le bouton <Navigation className="w-3.5 h-3.5 inline" /> pour vous localiser d&apos;abord
+            </p>
+          )}
+
+          {/* Loading spinner */}
+          {isGenerating && (
+            <div className="flex flex-col items-center gap-3 py-8">
+              <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+              <p className="text-sm text-gray-500">Calcul des circuits {selectedDistance} km...</p>
+            </div>
+          )}
+
+          {/* Route cards */}
+          {routes.length > 0 && !isGenerating && (
+            <div className="space-y-2 mt-1">
+              {routes.map((route, i) => {
+                const dev = distanceDeviation(route.distance, selectedDistance);
+                const isSelected = route.id === selectedRouteId;
+                const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
+                return (
+                  <button
+                    key={route.id}
+                    onClick={() => { setSelectedRouteId(route.id); setSheetOpen(false); }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition-all text-left ${
+                      isSelected
+                        ? 'border-orange-400 bg-orange-50 dark:bg-orange-900/10'
+                        : 'border-transparent bg-gray-50 dark:bg-gray-800/50'
+                    }`}
+                  >
+                    <div className="w-3.5 h-3.5 rounded-full flex-none" style={{ background: color }} />
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-bold text-gray-900 dark:text-white">
+                          {route.label}
+                        </span>
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                          {formatDistance(route.distance)}
+                        </span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                          Math.abs(dev) <= 8
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+                            : Math.abs(dev) <= 20
+                            ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400'
+                            : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+                        }`}>
+                          {dev > 0 ? '+' : ''}{dev}%
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5">≈ {formatDuration(route.duration)}</p>
+                    </div>
+
+                    {isSelected && <CheckCircle2 className="w-5 h-5 text-orange-500 flex-none" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Regenerate */}
+          {routes.length > 0 && !isGenerating && (
+            <button
+              onClick={handleGenerateRoutes}
+              className="w-full flex items-center justify-center gap-1.5 py-2.5 mt-3 rounded-xl text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Régénérer
+            </button>
+          )}
+
+          {/* Paths info */}
+          {paths.length > 0 && (
+            <p className="text-xs text-gray-300 dark:text-gray-600 text-center mt-2">
+              {paths.length} segments chargés · {paths.filter((p) => p.score >= 0.7).length} idéaux pour courir
+            </p>
+          )}
+        </div>
       </div>
+
+      {/* ── "Run this circuit" sticky CTA ── */}
+      {selectedRoute && (
+        <div className="absolute bottom-0 left-0 right-0 z-[1001] px-4 pb-4 pointer-events-none" style={{ bottom: sheetOpen ? '60vh' : '80px' }}>
+          <button
+            onClick={handleRunCircuit}
+            className="w-full flex items-center justify-center gap-2 py-4 bg-orange-500 text-white rounded-2xl text-base font-bold shadow-xl active:scale-95 transition-all pointer-events-auto"
+          >
+            <Play className="w-5 h-5 fill-white" />
+            Courir ce circuit · {formatDistance(selectedRoute.distance)}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
