@@ -183,9 +183,9 @@ export default function TrackerInterface() {
   // ═══════════════════════════════════════════════════════════════════════════
   if (isTracking && viewMode === 'stats') {
     return (
-      <div className="fixed inset-0 bg-white dark:bg-gray-950 flex flex-col" {...swipe}>
-        {/* Timer row */}
-        <div className="flex items-center justify-between px-6 pt-10 pb-2">
+      <div className="fixed inset-0 bg-white dark:bg-gray-950 flex flex-col" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 64px)' }} {...swipe}>
+        {/* Timer row — pt accounts for status bar (safe-area-inset-top) */}
+        <div className="flex items-center justify-between px-6 pb-2" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 16px)' }}>
           <span className="text-4xl font-black tabular-nums text-gray-900 dark:text-white tracking-tight">
             {formatDuration(duration)}
           </span>
@@ -273,7 +273,7 @@ export default function TrackerInterface() {
   // ═══════════════════════════════════════════════════════════════════════════
   if (isTracking && viewMode === 'map') {
     return (
-      <div className="fixed inset-0 flex flex-col">
+      <div className="fixed inset-0 flex flex-col" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 64px)' }}>
         {/* Map */}
         <div className="flex-1 relative">
           <DynamicMap
@@ -330,9 +330,10 @@ export default function TrackerInterface() {
 
   // ═══════════════════════════════════════════════════════════════════════════
   // PRE-TRACKING — Map-first with bottom panel (like Komoot screen 1)
+  // Use h-full (not fixed inset-0) so parent page.tsx paddingBottom is respected
   // ═══════════════════════════════════════════════════════════════════════════
   return (
-    <div className="fixed inset-0 flex flex-col">
+    <div className="h-full flex flex-col">
       {/* Map */}
       <div className="flex-1 relative min-h-0">
         <DynamicMap
