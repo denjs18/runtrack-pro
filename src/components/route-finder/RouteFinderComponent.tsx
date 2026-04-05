@@ -228,42 +228,45 @@ export default function RouteFinderComponent() {
 
       {/* ── Top bar: distance chips + actions ── */}
       <div className="absolute top-3 left-0 right-0 px-3 z-[1000] flex flex-col gap-2 pointer-events-none">
-        {/* Distance chips */}
-        <div className="flex items-center gap-2 pointer-events-auto">
-          <div className="flex gap-1.5 overflow-x-auto no-scrollbar flex-1">
-            {DISTANCE_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setSelectedDistance(opt.value)}
-                className={`flex-none px-3 py-1.5 rounded-full text-sm font-semibold shadow transition-colors ${
-                  selectedDistance === opt.value
-                    ? 'bg-orange-500 text-white shadow-orange-200'
-                    : 'bg-white/95 text-gray-700 dark:bg-gray-800/95 dark:text-gray-200'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-
+        {/* Row 1: action buttons right-aligned */}
+        <div className="flex justify-end gap-2 pointer-events-auto">
           {/* Locate me */}
           <button
             onClick={locateUser}
             disabled={isLocating}
-            className="flex-none p-2 rounded-full shadow transition-colors pointer-events-auto bg-white/95 text-orange-500 dark:bg-gray-800/95 disabled:opacity-50 active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full shadow bg-white/95 text-orange-500 dark:bg-gray-800/95 disabled:opacity-50 active:scale-95 text-xs font-semibold"
           >
-            {isLocating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
+            {isLocating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Navigation className="w-3.5 h-3.5" />}
+            {isLocating ? 'GPS…' : 'Localiser'}
           </button>
 
           {/* Filter toggle */}
           <button
             onClick={() => setShowFilters((v) => !v)}
-            className={`flex-none p-2 rounded-full shadow transition-colors pointer-events-auto ${
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-full shadow transition-colors pointer-events-auto text-xs font-semibold ${
               showFilters ? 'bg-orange-500 text-white' : 'bg-white/95 text-gray-600 dark:bg-gray-800/95 dark:text-gray-300'
             }`}
           >
-            <Filter className="w-4 h-4" />
+            <Filter className="w-3.5 h-3.5" />
+            Filtres
           </button>
+        </div>
+
+        {/* Row 2: distance chips — full width, scrollable */}
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar pointer-events-auto pb-0.5">
+          {DISTANCE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setSelectedDistance(opt.value)}
+              className={`flex-none px-4 py-2 rounded-full text-sm font-semibold shadow transition-colors ${
+                selectedDistance === opt.value
+                  ? 'bg-orange-500 text-white shadow-orange-200'
+                  : 'bg-white/95 text-gray-700 dark:bg-gray-800/95 dark:text-gray-200'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
 
         {/* Expanded filter panel */}
@@ -352,8 +355,8 @@ export default function RouteFinderComponent() {
           </div>
         </button>
 
-        {/* Sheet content */}
-        <div className="px-4 pb-6 max-h-[60vh] overflow-y-auto">
+        {/* Sheet content — pb-24 clears the fixed nav bar */}
+        <div className="px-4 pb-24 max-h-[60vh] overflow-y-auto">
           {/* Generate button when no routes */}
           {!isGenerating && routes.length === 0 && (
             <button
@@ -513,7 +516,7 @@ export default function RouteFinderComponent() {
 
       {/* ── Bottom CTA: animation progress OR run button ── */}
       {selectedRoute && !sheetOpen && (
-        <div className="absolute left-0 right-0 z-[1001] px-4 pb-4" style={{ bottom: '0px' }}>
+        <div className="absolute left-0 right-0 z-[1001] px-4 pb-24" style={{ bottom: '0px' }}>
           {isAnimating ? (
             /* Animation controls */
             <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl px-4 pt-3 pb-4 space-y-3">
