@@ -388,8 +388,8 @@ export default function TrackerInterface() {
           </div>
         </div>
 
-        {/* Controls row — pb-24 clears the fixed nav bar (80px) */}
-        <div className="flex items-center justify-around px-6 py-4 pb-24">
+        {/* Controls row */}
+        <div className="flex items-center justify-around px-6 py-4 pb-6">
           {/* Audio toggle (left slot) */}
           <button
             onClick={toggleAudio}

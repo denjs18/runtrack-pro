@@ -7,7 +7,7 @@ export const metadata = {
 
 export default function RouteFinderPage() {
   return (
-    <main className="fixed inset-0 pb-16">
+    <main className="fixed inset-0" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 64px)' }}>
       <RouteFinderComponent />
     </main>
   );

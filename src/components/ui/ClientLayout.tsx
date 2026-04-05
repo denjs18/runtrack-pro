@@ -23,7 +23,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
 
   return (
     <ToastProvider>
-      <div className={isTracking ? 'pb-12' : 'pb-20'}>
+      <div style={{ paddingBottom: isTracking ? 'calc(env(safe-area-inset-bottom) + 48px)' : 'calc(env(safe-area-inset-bottom) + 64px)' }}>
         {children}
       </div>
       <Navigation />

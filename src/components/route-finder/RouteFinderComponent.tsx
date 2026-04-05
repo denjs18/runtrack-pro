@@ -227,7 +227,11 @@ export default function RouteFinderComponent() {
       </div>
 
       {/* ── Top bar: distance chips + actions ── */}
-      <div className="absolute top-3 left-0 right-0 px-3 z-[1000] flex flex-col gap-2 pointer-events-none">
+      {/* top offset: safe-area-inset-top (status bar) + 8px breathing room */}
+      <div
+        className="absolute left-0 right-0 px-3 z-[1000] flex flex-col gap-2 pointer-events-none"
+        style={{ top: 'calc(env(safe-area-inset-top) + 8px)' }}
+      >
         {/* Row 1: action buttons right-aligned */}
         <div className="flex justify-end gap-2 pointer-events-auto">
           {/* Locate me */}
@@ -327,7 +331,7 @@ export default function RouteFinderComponent() {
       {/* ── Bottom sheet ── */}
       <div
         className={`absolute bottom-0 left-0 right-0 bg-white dark:bg-gray-900 rounded-t-3xl shadow-2xl z-[1000] transition-all duration-300 ${
-          sheetOpen ? 'translate-y-0' : 'translate-y-[calc(100%-80px)]'
+          sheetOpen ? 'translate-y-0' : 'translate-y-[calc(100%-90px)]'
         }`}
       >
         {/* Drag handle + header */}
@@ -355,8 +359,8 @@ export default function RouteFinderComponent() {
           </div>
         </button>
 
-        {/* Sheet content — pb-24 clears the fixed nav bar */}
-        <div className="px-4 pb-24 max-h-[60vh] overflow-y-auto">
+        {/* Sheet content */}
+        <div className="px-4 pb-6 max-h-[60vh] overflow-y-auto">
           {/* Generate button when no routes */}
           {!isGenerating && routes.length === 0 && (
             <button
@@ -516,7 +520,7 @@ export default function RouteFinderComponent() {
 
       {/* ── Bottom CTA: animation progress OR run button ── */}
       {selectedRoute && !sheetOpen && (
-        <div className="absolute left-0 right-0 z-[1001] px-4 pb-24" style={{ bottom: '0px' }}>
+        <div className="absolute left-0 right-0 z-[1001] px-4 pb-4" style={{ bottom: '0px' }}>
           {isAnimating ? (
             /* Animation controls */
             <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl px-4 pt-3 pb-4 space-y-3">
