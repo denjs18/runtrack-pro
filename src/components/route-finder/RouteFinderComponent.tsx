@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Loader2, Navigation, RefreshCw, Route, Filter,
@@ -31,7 +31,8 @@ const DISTANCE_OPTIONS = [
 const RADIUS_OPTIONS = [
   { label: '1 km', value: 1000 },
   { label: '2 km', value: 2000 },
-  { label: '3 km', value: 3000 },
+  { label: '5 km', value: 5000 },
+  { label: '10 km', value: 10000 },
 ];
 
 // Must match ROUTE_COLORS in RouteFinderMap.tsx
@@ -97,6 +98,9 @@ export default function RouteFinderComponent() {
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
     );
   }, []);
+
+  // Auto-locate on mount
+  useEffect(() => { locateUser(); }, [locateUser]);
 
   const loadPaths = useCallback(async () => {
     const center = mapCenter ?? userPosition;
@@ -197,6 +201,15 @@ export default function RouteFinderComponent() {
             ))}
           </div>
 
+          {/* Locate me */}
+          <button
+            onClick={locateUser}
+            disabled={isLocating}
+            className="flex-none p-2 rounded-full shadow transition-colors pointer-events-auto bg-white/95 text-orange-500 dark:bg-gray-800/95 disabled:opacity-50 active:scale-95"
+          >
+            {isLocating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
+          </button>
+
           {/* Filter toggle */}
           <button
             onClick={() => setShowFilters((v) => !v)}
@@ -261,18 +274,6 @@ export default function RouteFinderComponent() {
             </button>
           </div>
         )}
-      </div>
-
-      {/* ── Floating action buttons (right side) ── */}
-      <div className="absolute right-3 bottom-48 z-[1000] flex flex-col gap-3">
-        {/* Locate me */}
-        <button
-          onClick={locateUser}
-          disabled={isLocating}
-          className="w-12 h-12 bg-white dark:bg-gray-800 rounded-full shadow-lg flex items-center justify-center text-orange-500 disabled:opacity-50 active:scale-95 transition-transform"
-        >
-          {isLocating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Navigation className="w-5 h-5" />}
-        </button>
       </div>
 
       {/* ── Bottom sheet ── */}
