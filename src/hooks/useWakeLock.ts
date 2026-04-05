@@ -2,34 +2,23 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-declare global {
-  interface Navigator {
-    wakeLock?: {
-      request(type: 'screen'): Promise<WakeLockSentinel>;
-    };
-  }
-  interface WakeLockSentinel {
-    released: boolean;
-    release(): Promise<void>;
-    addEventListener(type: string, listener: EventListener): void;
-    removeEventListener(type: string, listener: EventListener): void;
-  }
-}
+// Use unknown nav to avoid conflicts with the DOM lib's own WakeLock declarations
+type AnyNav = Navigator & { wakeLock?: { request(type: 'screen'): Promise<WakeLockSentinel> } };
 
 export function useWakeLock() {
   const [isLockActive, setIsLockActive] = useState(false);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
-  // Use a ref (not state) so visibilitychange handler never has stale closure
+  // Use a ref (not state) so visibilitychange handler never has a stale closure
   const shouldHoldLockRef = useRef(false);
 
   const requestLock = async () => {
-    if (!navigator.wakeLock) return;
+    const nav = navigator as AnyNav;
+    if (!nav.wakeLock) return;
     try {
-      wakeLockRef.current = await navigator.wakeLock.request('screen');
+      wakeLockRef.current = await nav.wakeLock.request('screen');
       shouldHoldLockRef.current = true;
       setIsLockActive(true);
       wakeLockRef.current.addEventListener('release', () => {
-        // OS released it (e.g. background) — will be re-acquired on visibilitychange
         if (!shouldHoldLockRef.current) setIsLockActive(false);
       });
     } catch {
