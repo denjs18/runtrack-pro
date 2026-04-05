@@ -61,53 +61,58 @@ export async function fetchRunningPaths(
     ? '^(footway|path|track|pedestrian|living_street|cycleway|residential)$'
     : '^(footway|path|track|pedestrian|living_street|cycleway|residential|service|unclassified|tertiary|secondary|primary)$';
 
-  // Scale server-side timeout with radius, cap at 60s
-  const overpassTimeout = radiusMeters <= 2000 ? 25 : radiusMeters <= 5000 ? 45 : 60;
+  // For large radii, silently cap the effective display radius to avoid timeouts
+  // (circuit generation uses OSRM directly and doesn't depend on this)
+  const effectiveRadius = Math.min(radiusMeters, 3000);
+  const overpassTimeout = effectiveRadius <= 1000 ? 20 : 30;
 
   const query = `[out:json][timeout:${overpassTimeout}];
 (
-  way["highway"~"${highwayFilter}"](around:${radiusMeters},${lat},${lng});
+  way["highway"~"${highwayFilter}"](around:${effectiveRadius},${lat},${lng});
 );
-out body;
+out body 600;
 >;
 out skel qt;`;
 
-  // Client-side abort after overpassTimeout + 10s buffer
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), (overpassTimeout + 10) * 1000);
+  const timer = setTimeout(() => controller.abort(), (overpassTimeout + 8) * 1000);
 
-  let response: Response;
-  try {
-    // Try primary endpoint first, fall back to mirror
-    response = await fetch('https://overpass-api.de/api/interpreter', {
+  const tryFetch = async (url: string) => {
+    const res = await fetch(url, {
       method: 'POST',
       body: query,
       headers: { 'Content-Type': 'text/plain' },
       signal: controller.signal,
     });
+    if (!res.ok) {
+      if (res.status === 429) throw new Error('Trop de requêtes, patientez quelques secondes.');
+      if (res.status === 504) throw new Error('Timeout serveur. Essayez un rayon plus petit.');
+      throw new Error(`Erreur serveur (${res.status}).`);
+    }
+    return res;
+  };
+
+  let response: Response;
+  try {
+    response = await tryFetch('https://overpass-api.de/api/interpreter');
   } catch (e) {
     clearTimeout(timer);
-    if ((e as Error).name === 'AbortError') {
-      throw new Error('Timeout : zone trop grande, essayez un rayon plus petit.');
-    }
-    // Try mirror on network failure
+    if ((e as Error).name === 'AbortError')
+      throw new Error('Délai dépassé. Essayez un rayon plus petit.');
+    // Re-throw specific errors (429, 504) without trying the mirror
+    if ((e as Error).message.includes('Timeout') || (e as Error).message.includes('Trop'))
+      throw e;
+    // Network failure → try mirror
     try {
       response = await fetch('https://overpass.kumi.systems/api/interpreter', {
-        method: 'POST',
-        body: query,
-        headers: { 'Content-Type': 'text/plain' },
+        method: 'POST', body: query, headers: { 'Content-Type': 'text/plain' },
       });
+      if (!response.ok) throw new Error(`Erreur serveur (${response.status}).`);
     } catch {
-      throw new Error('Serveur Overpass inaccessible. Vérifiez votre connexion.');
+      throw new Error('Serveur inaccessible. Vérifiez votre connexion.');
     }
   }
   clearTimeout(timer);
-
-  if (!response.ok) {
-    if (response.status === 429) throw new Error('Trop de requêtes, patientez quelques secondes.');
-    if (response.status === 504) throw new Error('Timeout serveur : réduisez le rayon de recherche.');
-    throw new Error(`Erreur serveur (${response.status}). Réessayez.`);
-  }
 
   const data = await response.json();
 
@@ -122,7 +127,6 @@ out skel qt;`;
       const coords: [number, number][] = (el.nodes as number[])
         .map((id: number) => nodeMap.get(id))
         .filter((c): c is [number, number] => c !== undefined);
-
       if (coords.length >= 2) {
         const info = getPathInfo(el.tags);
         paths.push({ id: el.id, coords, tags: el.tags, ...info });
