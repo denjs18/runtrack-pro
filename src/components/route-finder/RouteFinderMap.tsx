@@ -61,6 +61,24 @@ function arrowIcon(bearing: number, color: string) {
   });
 }
 
+// ── Runner icon ───────────────────────────────────────────────────────────────
+
+function runnerIcon(bearingDeg: number) {
+  // 🏃 faces right (east = 90°), so rotate by (bearing - 90)
+  const rot = bearingDeg - 90;
+  return L.divIcon({
+    className: '',
+    html: `<div style="
+      font-size:26px;line-height:1;
+      transform:rotate(${rot}deg);
+      filter:drop-shadow(0 2px 6px rgba(0,0,0,0.5));
+      display:inline-block;
+    ">🏃</div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+  });
+}
+
 // ── Geometry helpers ─────────────────────────────────────────────────────────
 
 function haversineDist(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -84,6 +102,45 @@ function bearing(lat1: number, lng1: number, lat2: number, lng2: number) {
       Math.cos((lat2 * Math.PI) / 180) *
       Math.cos(dLng);
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+/** Interpolate a position + bearing along a polyline at progress [0-1] */
+function interpolateRoute(
+  coords: [number, number][],
+  progress: number
+): { pos: [number, number]; bear: number } {
+  if (coords.length < 2) return { pos: coords[0], bear: 0 };
+  if (progress <= 0) return { pos: coords[0], bear: bearing(coords[0][0], coords[0][1], coords[1][0], coords[1][1]) };
+  if (progress >= 1) {
+    const n = coords.length;
+    return { pos: coords[n - 1], bear: bearing(coords[n - 2][0], coords[n - 2][1], coords[n - 1][0], coords[n - 1][1]) };
+  }
+
+  // Precompute cumulative distances
+  const segs: number[] = [];
+  let total = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const d = haversineDist(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]);
+    segs.push(d);
+    total += d;
+  }
+
+  const target = progress * total;
+  let acc = 0;
+  for (let i = 0; i < segs.length; i++) {
+    if (acc + segs[i] >= target) {
+      const t = segs[i] > 0 ? (target - acc) / segs[i] : 0;
+      const [la1, lo1] = coords[i];
+      const [la2, lo2] = coords[i + 1];
+      return {
+        pos: [la1 + t * (la2 - la1), lo1 + t * (lo2 - lo1)],
+        bear: bearing(la1, lo1, la2, lo2),
+      };
+    }
+    acc += segs[i];
+  }
+  const n = coords.length;
+  return { pos: coords[n - 1], bear: bearing(coords[n - 2][0], coords[n - 2][1], coords[n - 1][0], coords[n - 1][1]) };
 }
 
 /** Place an arrow every `intervalM` meters along the coords */
@@ -167,6 +224,7 @@ interface RouteFinderMapProps {
   shouldCenter: boolean;
   onCentered: () => void;
   onMapMoved: (lat: number, lng: number) => void;
+  animProgress: number | null; // null = no animation, 0-1 = animating
 }
 
 export default function RouteFinderMap({
@@ -178,10 +236,17 @@ export default function RouteFinderMap({
   shouldCenter,
   onCentered,
   onMapMoved,
+  animProgress,
 }: RouteFinderMapProps) {
   const defaultCenter: [number, number] = [48.8566, 2.3522];
   const initialCenter = userPosition ?? defaultCenter;
   const selectedRoute = routes.find((r) => r.id === selectedRouteId) ?? null;
+
+  // Interpolate runner position
+  const runnerState = useMemo(() => {
+    if (animProgress === null || !selectedRoute?.coords.length) return null;
+    return interpolateRoute(selectedRoute.coords, animProgress);
+  }, [animProgress, selectedRoute]);
 
   // Precompute arrows for each route
   const routeArrows = useMemo(
@@ -273,8 +338,8 @@ export default function RouteFinderMap({
                   />
                 ))}
 
-              {/* Start marker — only on selected route */}
-              {isSelected && route.coords.length > 0 && (
+              {/* Start marker — only on selected route, hidden during animation */}
+              {isSelected && route.coords.length > 0 && animProgress === null && (
                 <Marker
                   position={route.coords[0]}
                   icon={startIcon(color)}
@@ -284,6 +349,15 @@ export default function RouteFinderMap({
             </span>
           );
         })}
+
+        {/* Animated runner */}
+        {runnerState && (
+          <Marker
+            position={runnerState.pos}
+            icon={runnerIcon(runnerState.bear)}
+            interactive={false}
+          />
+        )}
 
         {/* User position */}
         {userPosition && (
