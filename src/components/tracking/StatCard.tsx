@@ -8,6 +8,7 @@ interface StatCardProps {
   value: string;
   subValue?: string;
   variant?: 'default' | 'primary' | 'highlight';
+  large?: boolean;
 }
 
 export default function StatCard({
@@ -16,6 +17,7 @@ export default function StatCard({
   value,
   subValue,
   variant = 'default',
+  large = false,
 }: StatCardProps) {
   const variants = {
     default: 'bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700',
@@ -49,9 +51,13 @@ export default function StatCard({
           {label}
         </span>
       </div>
-      <div className={`text-2xl font-bold ${valueColors[variant]}`}>{value}</div>
+      <div className={`font-bold ${large ? 'text-4xl' : 'text-2xl'} ${valueColors[variant]}`}>
+        {value}
+      </div>
       {subValue && (
-        <div className={`text-sm mt-1 ${textColors[variant]}`}>{subValue}</div>
+        <div className={`${large ? 'text-base' : 'text-sm'} mt-1 ${textColors[variant]}`}>
+          {subValue}
+        </div>
       )}
     </div>
   );

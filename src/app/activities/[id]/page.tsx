@@ -15,7 +15,10 @@ import {
   Edit2,
   Check,
   X,
+  Download,
 } from 'lucide-react';
+import { downloadGPX } from '@/lib/gpxExport';
+import type { IActivity } from '@/models/Activity';
 import DynamicMap from '@/components/tracking/DynamicMap';
 import StatCard from '@/components/tracking/StatCard';
 import Button from '@/components/ui/Button';
@@ -184,6 +187,15 @@ export default function ActivityDetailPage({ params }: PageProps) {
             </div>
           </div>
 
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => activity && downloadGPX(activity as unknown as IActivity)}
+            className="text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+            title="Exporter en GPX"
+          >
+            <Download className="w-5 h-5" />
+          </Button>
           <Button
             variant="ghost"
             size="sm"

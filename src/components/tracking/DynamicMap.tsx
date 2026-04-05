@@ -3,7 +3,6 @@
 import dynamic from 'next/dynamic';
 import { GPSPoint } from '@/types';
 
-// Dynamically import MapComponent with no SSR
 const MapComponent = dynamic(() => import('./MapComponent'), {
   ssr: false,
   loading: () => (
@@ -19,6 +18,7 @@ interface DynamicMapProps {
   isTracking?: boolean;
   height?: string;
   showSpeedGradient?: boolean;
+  circuitCoords?: [number, number][] | null;
 }
 
 export default function DynamicMap(props: DynamicMapProps) {
