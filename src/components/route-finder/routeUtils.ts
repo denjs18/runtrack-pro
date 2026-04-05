@@ -258,14 +258,25 @@ async function generateSingleRoute(
 /**
  * Generate multiple loop routes with different shapes.
  * Uses OSRM Trip API (TSP) for proper non-backtracking loops.
+ * onProgress(done, total) is called each time a circuit finishes.
  */
 export async function generateMultipleRoutes(
   lat: number,
   lng: number,
-  targetKm: number
+  targetKm: number,
+  onProgress?: (done: number, total: number) => void
 ): Promise<GeneratedRoute[]> {
+  const total = ROUTE_CONFIGS.length;
+  let done = 0;
+
   const results = await Promise.allSettled(
-    ROUTE_CONFIGS.map((config) => generateSingleRoute(lat, lng, targetKm, config))
+    ROUTE_CONFIGS.map((config) =>
+      generateSingleRoute(lat, lng, targetKm, config).then((r) => {
+        done++;
+        onProgress?.(done, total);
+        return r;
+      })
+    )
   );
 
   return results

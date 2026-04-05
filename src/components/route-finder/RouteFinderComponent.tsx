@@ -61,6 +61,7 @@ export default function RouteFinderComponent() {
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [isLoadingPaths, setIsLoadingPaths] = useState(false);
   const [isGenerating, setIsGenerating]     = useState(false);
+  const [genProgress, setGenProgress]       = useState({ done: 0, total: 0 });
   const [isLocating, setIsLocating]         = useState(false);
   const [error, setError]                   = useState<string | null>(null);
   const [searchRadius, setSearchRadius]     = useState(2000);
@@ -137,9 +138,13 @@ export default function RouteFinderComponent() {
     setError(null);
     setRoutes([]);
     setSelectedRouteId(null);
+    setGenProgress({ done: 0, total: 5 });
     setSheetOpen(true);
     try {
-      const generated = await generateMultipleRoutes(userPosition[0], userPosition[1], selectedDistance);
+      const generated = await generateMultipleRoutes(
+        userPosition[0], userPosition[1], selectedDistance,
+        (done, total) => setGenProgress({ done, total })
+      );
       if (!generated.length) throw new Error('Aucun circuit trouvé.');
       setRoutes(generated);
       setSelectedRouteId(generated[0].id);
@@ -327,11 +332,48 @@ export default function RouteFinderComponent() {
             </p>
           )}
 
-          {/* Loading spinner */}
+          {/* Progress bar */}
           {isGenerating && (
-            <div className="flex flex-col items-center gap-3 py-8">
-              <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
-              <p className="text-sm text-gray-500">Calcul des circuits {selectedDistance} km...</p>
+            <div className="py-6 space-y-4">
+              {/* Bar */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>Calcul des circuits {selectedDistance} km…</span>
+                  <span className="font-semibold tabular-nums text-orange-500">
+                    {genProgress.done}/{genProgress.total}
+                  </span>
+                </div>
+                <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-orange-500 rounded-full transition-all duration-500 ease-out"
+                    style={{
+                      width: genProgress.total > 0
+                        ? `${(genProgress.done / genProgress.total) * 100}%`
+                        : '0%',
+                    }}
+                  />
+                </div>
+              </div>
+              {/* Individual step dots */}
+              <div className="flex justify-center gap-2">
+                {Array.from({ length: genProgress.total || 5 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                      i < genProgress.done
+                        ? 'bg-orange-500 scale-110'
+                        : 'bg-gray-200 dark:bg-gray-700'
+                    }`}
+                  />
+                ))}
+              </div>
+              <p className="text-xs text-center text-gray-400">
+                {genProgress.done === 0
+                  ? 'Connexion au serveur de routage…'
+                  : genProgress.done < (genProgress.total || 5)
+                  ? `Circuit ${genProgress.done} calculé, encore ${(genProgress.total || 5) - genProgress.done}…`
+                  : 'Tri des meilleurs circuits…'}
+              </p>
             </div>
           )}
 
