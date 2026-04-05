@@ -3,6 +3,7 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { ToastProvider } from './Toast';
 import Navigation from './Navigation';
+import InstallBanner from './InstallBanner';
 
 const TRACKING_FLAG = 'runtrack_is_tracking';
 
@@ -22,11 +23,11 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
 
   return (
     <ToastProvider>
-      {/* Reduce bottom padding when tracking (pill is shorter than full nav) */}
       <div className={isTracking ? 'pb-12' : 'pb-20'}>
         {children}
       </div>
       <Navigation />
+      <InstallBanner />
     </ToastProvider>
   );
 }
