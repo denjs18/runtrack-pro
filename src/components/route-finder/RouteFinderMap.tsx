@@ -18,7 +18,6 @@ const UserPositionIcon = L.divIcon({
   iconAnchor: [10, 10],
 });
 
-// Colors for the different generated circuits
 const ROUTE_COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#06b6d4', '#8b5cf6'];
 
 function MapController({
@@ -26,20 +25,30 @@ function MapController({
   shouldCenter,
   onCentered,
   onMapMoved,
+  selectedRoute,
 }: {
   userPosition: [number, number] | null;
   shouldCenter: boolean;
   onCentered: () => void;
   onMapMoved: (lat: number, lng: number) => void;
+  selectedRoute: GeneratedRoute | null;
 }) {
   const map = useMap();
 
+  // Center on user position when requested
   useEffect(() => {
     if (userPosition && shouldCenter) {
       map.setView(userPosition, 15, { animate: true });
       onCentered();
     }
   }, [userPosition, shouldCenter, map, onCentered]);
+
+  // Fit bounds to selected route whenever it changes
+  useEffect(() => {
+    if (!selectedRoute || selectedRoute.coords.length === 0) return;
+    const bounds = L.latLngBounds(selectedRoute.coords);
+    map.fitBounds(bounds, { padding: [40, 40], animate: true, maxZoom: 16 });
+  }, [selectedRoute, map]);
 
   useMapEvents({
     moveend: () => {
@@ -74,6 +83,7 @@ export default function RouteFinderMap({
 }: RouteFinderMapProps) {
   const defaultCenter: [number, number] = [48.8566, 2.3522];
   const initialCenter = userPosition ?? defaultCenter;
+  const selectedRoute = routes.find((r) => r.id === selectedRouteId) ?? null;
 
   return (
     <div style={{ height: '100%', width: '100%' }}>
@@ -93,6 +103,7 @@ export default function RouteFinderMap({
           shouldCenter={shouldCenter}
           onCentered={onCentered}
           onMapMoved={onMapMoved}
+          selectedRoute={selectedRoute}
         />
 
         {/* Search radius circle */}
