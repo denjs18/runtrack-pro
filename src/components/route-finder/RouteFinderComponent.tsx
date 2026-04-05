@@ -2,9 +2,11 @@
 
 import dynamic from 'next/dynamic';
 import { useState, useCallback, useRef } from 'react';
-import { Loader2, Navigation, RefreshCw, Route, MapPin, Filter, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Loader2, Navigation, RefreshCw, Route, MapPin, Filter, ChevronDown, ChevronUp, CheckCircle2, Play } from 'lucide-react';
 import type { OsmPath, GeneratedRoute } from './types';
 import { fetchRunningPaths, generateMultipleRoutes } from './routeUtils';
+import { saveCircuit } from '@/hooks/useSelectedCircuit';
 
 const RouteFinderMap = dynamic(() => import('./RouteFinderMap'), {
   ssr: false,
@@ -151,6 +153,19 @@ export default function RouteFinderComponent() {
   }, [userPosition, selectedDistance]);
 
   const selectedRoute = routes.find((r) => r.id === selectedRouteId) ?? null;
+  const router = useRouter();
+
+  const handleRunCircuit = useCallback(() => {
+    if (!selectedRoute) return;
+    saveCircuit({
+      id: selectedRoute.id,
+      coords: selectedRoute.coords,
+      distance: selectedRoute.distance,
+      duration: selectedRoute.duration,
+      label: selectedRoute.label,
+    });
+    router.push('/');
+  }, [selectedRoute, router]);
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900">
@@ -387,6 +402,17 @@ export default function RouteFinderComponent() {
                   );
                 })}
               </div>
+            )}
+
+            {/* Run selected circuit */}
+            {selectedRoute && (
+              <button
+                onClick={handleRunCircuit}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-green-500 hover:bg-green-600 active:scale-95 text-white rounded-xl text-base font-bold transition-all shadow-md"
+              >
+                <Play className="w-5 h-5 fill-white" />
+                Courir ce circuit ({formatDistance(selectedRoute.distance)})
+              </button>
             )}
 
             {/* Path count */}

@@ -7,7 +7,6 @@ import { GPSPoint } from '@/types';
 import { getSpeedColor, throttle } from '@/lib/utils';
 import 'leaflet/dist/leaflet.css';
 
-// Fix for default marker icons in Leaflet with webpack
 const DefaultIcon = L.icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -38,9 +37,9 @@ interface MapComponentProps {
   isTracking?: boolean;
   height?: string;
   showSpeedGradient?: boolean;
+  circuitCoords?: [number, number][] | null;
 }
 
-// Component to handle map view updates
 function MapUpdater({
   points,
   currentPosition,
@@ -56,13 +55,12 @@ function MapUpdater({
   const throttledSetView = useCallback(
     throttle((lat: number, lng: number) => {
       map.setView([lat, lng], map.getZoom(), { animate: true });
-    }, 1000), // Max 1 update per second for battery saving
+    }, 1000),
     [map]
   );
 
   useEffect(() => {
     if (!isTracking) return;
-
     if (currentPosition) {
       const now = Date.now();
       if (now - lastUpdateRef.current > 1000) {
@@ -72,7 +70,6 @@ function MapUpdater({
     }
   }, [currentPosition, isTracking, throttledSetView]);
 
-  // Fit bounds when viewing completed track
   useEffect(() => {
     if (!isTracking && points.length > 1) {
       const bounds = L.latLngBounds(points.map((p) => [p.lat, p.lng]));
@@ -89,51 +86,33 @@ export default function MapComponent({
   isTracking = false,
   height = '300px',
   showSpeedGradient = true,
+  circuitCoords,
 }: MapComponentProps) {
-  // Memoize polyline segments with colors based on speed
   const polylineSegments = useMemo(() => {
-    if (!showSpeedGradient || points.length < 2) {
-      return null;
-    }
-
-    // Find min and max speed for normalization
+    if (!showSpeedGradient || points.length < 2) return null;
     const speeds = points.map((p) => p.speed ?? 0).filter((s) => s > 0);
     const minSpeed = speeds.length > 0 ? Math.min(...speeds) : 0;
     const maxSpeed = speeds.length > 0 ? Math.max(...speeds) : 15;
-
     const segments: { positions: [number, number][]; color: string }[] = [];
-
     for (let i = 0; i < points.length - 1; i++) {
       const p1 = points[i];
       const p2 = points[i + 1];
       const speed = p2.speed ?? p1.speed ?? 0;
-      const color = getSpeedColor(speed, minSpeed, maxSpeed);
-
       segments.push({
-        positions: [
-          [p1.lat, p1.lng],
-          [p2.lat, p2.lng],
-        ],
-        color,
+        positions: [[p1.lat, p1.lng], [p2.lat, p2.lng]],
+        color: getSpeedColor(speed, minSpeed, maxSpeed),
       });
     }
-
     return segments;
   }, [points, showSpeedGradient]);
 
-  // Default center (Paris)
   const defaultCenter: [number, number] = [48.8566, 2.3522];
-
-  // Calculate initial center
   const center = useMemo((): [number, number] => {
-    if (currentPosition) {
-      return [currentPosition.lat, currentPosition.lng];
-    }
-    if (points.length > 0) {
-      return [points[0].lat, points[0].lng];
-    }
+    if (currentPosition) return [currentPosition.lat, currentPosition.lng];
+    if (points.length > 0) return [points[0].lat, points[0].lng];
+    if (circuitCoords && circuitCoords.length > 0) return circuitCoords[0];
     return defaultCenter;
-  }, [currentPosition, points]);
+  }, [currentPosition, points, circuitCoords]);
 
   return (
     <div className="relative rounded-2xl overflow-hidden shadow-lg" style={{ height }}>
@@ -154,38 +133,40 @@ export default function MapComponent({
           isTracking={isTracking}
         />
 
-        {/* Polyline with speed gradient */}
+        {/* Circuit guide overlay — dashed indigo */}
+        {circuitCoords && circuitCoords.length > 1 && (
+          <Polyline
+            positions={circuitCoords}
+            pathOptions={{
+              color: '#6366f1',
+              weight: 5,
+              opacity: 0.55,
+              dashArray: '10 7',
+              lineCap: 'round',
+            }}
+          />
+        )}
+
+        {/* Recorded track with speed gradient */}
         {polylineSegments
           ? polylineSegments.map((segment, index) => (
               <Polyline
                 key={index}
                 positions={segment.positions}
-                pathOptions={{
-                  color: segment.color,
-                  weight: 4,
-                  opacity: 0.9,
-                  lineCap: 'round',
-                  lineJoin: 'round',
-                }}
+                pathOptions={{ color: segment.color, weight: 4, opacity: 0.9, lineCap: 'round', lineJoin: 'round' }}
               />
             ))
           : points.length > 1 && (
               <Polyline
                 positions={points.map((p) => [p.lat, p.lng])}
-                pathOptions={{
-                  color: '#3B82F6',
-                  weight: 4,
-                  opacity: 0.9,
-                }}
+                pathOptions={{ color: '#3B82F6', weight: 4, opacity: 0.9 }}
               />
             )}
 
-        {/* Start marker */}
         {points.length > 0 && (
           <Marker position={[points[0].lat, points[0].lng]} icon={DefaultIcon} />
         )}
 
-        {/* Current position marker */}
         {isTracking && currentPosition && (
           <Marker
             position={[currentPosition.lat, currentPosition.lng]}
@@ -194,20 +175,12 @@ export default function MapComponent({
         )}
       </MapContainer>
 
-      {/* Legend for speed gradient */}
       {showSpeedGradient && points.length > 1 && (
         <div className="absolute bottom-4 left-4 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg px-3 py-2 shadow-md z-[1000]">
-          <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-            Vitesse
-          </div>
+          <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Vitesse</div>
           <div className="flex items-center gap-1">
             <span className="text-xs text-gray-500">Lent</span>
-            <div
-              className="w-20 h-2 rounded-full"
-              style={{
-                background: 'linear-gradient(to right, #ef4444, #eab308, #22c55e)',
-              }}
-            />
+            <div className="w-20 h-2 rounded-full" style={{ background: 'linear-gradient(to right, #ef4444, #eab308, #22c55e)' }} />
             <span className="text-xs text-gray-500">Rapide</span>
           </div>
         </div>
