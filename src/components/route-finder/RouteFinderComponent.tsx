@@ -343,18 +343,22 @@ export default function RouteFinderComponent() {
                 const isSelected = route.id === selectedRouteId;
                 const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
                 return (
-                  <button
+                  <div
                     key={route.id}
-                    onClick={() => { setSelectedRouteId(route.id); setSheetOpen(false); }}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition-all text-left ${
+                    className={`flex items-center gap-2 px-3 py-3 rounded-2xl border-2 transition-all ${
                       isSelected
                         ? 'border-orange-400 bg-orange-50 dark:bg-orange-900/10'
                         : 'border-transparent bg-gray-50 dark:bg-gray-800/50'
                     }`}
                   >
-                    <div className="w-3.5 h-3.5 rounded-full flex-none" style={{ background: color }} />
+                    {/* Color dot */}
+                    <div className="w-3 h-3 rounded-full flex-none" style={{ background: color }} />
 
-                    <div className="flex-1 min-w-0">
+                    {/* Info (tap to select) */}
+                    <button
+                      className="flex-1 min-w-0 text-left"
+                      onClick={() => setSelectedRouteId(route.id)}
+                    >
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-bold text-gray-900 dark:text-white">
                           {route.label}
@@ -372,11 +376,24 @@ export default function RouteFinderComponent() {
                           {dev > 0 ? '+' : ''}{dev}%
                         </span>
                       </div>
-                      <p className="text-xs text-gray-400 mt-0.5">≈ {formatDuration(route.duration)}</p>
-                    </div>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        ≈ {formatDuration(route.duration)} · Boucle
+                      </p>
+                    </button>
 
-                    {isSelected && <CheckCircle2 className="w-5 h-5 text-orange-500 flex-none" />}
-                  </button>
+                    {/* Play button — shows route on map */}
+                    <button
+                      onClick={() => { setSelectedRouteId(route.id); setSheetOpen(false); }}
+                      className={`flex-none w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90 ${
+                        isSelected
+                          ? 'bg-orange-500 text-white shadow-md'
+                          : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                      }`}
+                      title="Voir sur la carte"
+                    >
+                      <Play className="w-4 h-4 fill-current ml-0.5" />
+                    </button>
+                  </div>
                 );
               })}
             </div>

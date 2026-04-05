@@ -23,15 +23,24 @@ const UserPositionIcon = L.divIcon({
 function startIcon(color: string) {
   return L.divIcon({
     className: '',
-    html: `<div style="
-      background:${color};color:white;border-radius:50%;
-      width:28px;height:28px;
-      display:flex;align-items:center;justify-content:center;
-      font-size:13px;font-weight:bold;
-      border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);
-    ">▶</div>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
+    html: `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+      <div style="
+        background:${color};color:white;border-radius:50%;
+        width:34px;height:34px;
+        display:flex;align-items:center;justify-content:center;
+        font-size:15px;
+        border:3px solid white;box-shadow:0 3px 10px rgba(0,0,0,0.4);
+      ">▶</div>
+      <div style="
+        background:${color};color:white;
+        font-size:9px;font-weight:700;letter-spacing:0.05em;
+        padding:1px 5px;border-radius:4px;
+        box-shadow:0 1px 4px rgba(0,0,0,0.3);
+        white-space:nowrap;
+      ">DÉPART</div>
+    </div>`,
+    iconSize: [50, 52],
+    iconAnchor: [25, 10],
   });
 }
 

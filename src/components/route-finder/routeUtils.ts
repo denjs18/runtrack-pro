@@ -102,7 +102,9 @@ out skel qt;`;
   return paths;
 }
 
-/** Move a point by distanceKm in the given bearing (degrees, 0 = North) */
+// ── Geometry helpers ──────────────────────────────────────────────────────────
+
+/** Move a point by distanceKm in the given bearing (0 = North) */
 function offsetPoint(
   lat: number,
   lng: number,
@@ -128,71 +130,117 @@ function offsetPoint(
   return [(lat2 * 180) / Math.PI, (lng2 * 180) / Math.PI];
 }
 
-/** Generate waypoints evenly spaced around a circle, starting at bearingOffset */
-function circleWaypoints(
+/**
+ * Generate waypoints on an ellipse around origin.
+ * stretchBearing: direction of the long axis (0 = elongated N-S, 90 = E-W)
+ * stretchFactor:  ratio long/short axis (1 = circle)
+ */
+function ellipseWaypoints(
   lat: number,
   lng: number,
-  radiusKm: number,
+  radius: number,
   n: number,
-  bearingOffset: number
+  bearingOffset: number,
+  stretchBearing: number,
+  stretchFactor: number
 ): [number, number][] {
-  return Array.from({ length: n }, (_, i) =>
-    offsetPoint(lat, lng, radiusKm, bearingOffset + (360 / n) * i)
-  );
+  return Array.from({ length: n }, (_, i) => {
+    const angle = bearingOffset + (360 / n) * i;
+    const angleDiff = ((angle - stretchBearing + 360) % 360);
+    // cos²(angleDiff) = 1 on long axis, 0 on short axis
+    const cos2 = Math.cos((angleDiff * Math.PI) / 180) ** 2;
+    const r = radius * (1 / stretchFactor + (1 - 1 / stretchFactor) * cos2) * stretchFactor;
+    return offsetPoint(lat, lng, r, angle);
+  });
 }
 
-/** Call OSRM foot routing and return the route */
-async function osrmRoute(
-  allPoints: [number, number][]
+// ── OSRM Trip (TSP) ───────────────────────────────────────────────────────────
+
+/**
+ * Call the OSRM Trip API (Traveling Salesman Problem).
+ * With roundtrip=true + source=first, OSRM:
+ *   - Fixes the starting point (origin)
+ *   - Visits all waypoints in the OPTIMAL order (no backtracking)
+ *   - Returns to origin, forming a true loop
+ *
+ * This is fundamentally different from the Route API which follows waypoints
+ * in the exact given order (and can double back).
+ */
+async function osrmTrip(
+  origin: [number, number],
+  waypoints: [number, number][]
 ): Promise<{ distance: number; duration: number; coords: [number, number][] } | null> {
+  const allPoints = [origin, ...waypoints];
   const coordsStr = allPoints.map(([wlat, wlng]) => `${wlng},${wlat}`).join(';');
-  const url = `https://router.project-osrm.org/route/v1/foot/${coordsStr}?overview=full&geometries=geojson`;
+  const url =
+    `https://router.project-osrm.org/trip/v1/foot/${coordsStr}` +
+    `?roundtrip=true&source=first&geometries=geojson&overview=full`;
 
   const res = await fetch(url);
   if (!res.ok) return null;
   const data = await res.json();
-  if (!data.routes?.length) return null;
+  if (data.code !== 'Ok' || !data.trips?.length) return null;
 
-  const route = data.routes[0];
+  const trip = data.trips[0];
   return {
-    distance: route.distance,
-    duration: route.duration,
-    coords: (route.geometry.coordinates as [number, number][]).map(
-      ([rLng, rLat]) => [rLat, rLng]
+    distance: trip.distance,
+    duration: trip.duration,
+    coords: (trip.geometry.coordinates as [number, number][]).map(
+      ([rLng, rLat]) => [rLat, rLng] as [number, number]
     ),
   };
 }
 
+// ── Route configs ─────────────────────────────────────────────────────────────
+
+interface RouteConfig {
+  label: string;
+  n: number;
+  bearingOffset: number;
+  stretchBearing: number;
+  stretchFactor: number;
+}
+
+const ROUTE_CONFIGS: RouteConfig[] = [
+  // True circles (hexagons give the best coverage for TSP)
+  { label: 'Circuit A', n: 6, bearingOffset: 0,  stretchBearing: 0,  stretchFactor: 1 },
+  { label: 'Circuit B', n: 6, bearingOffset: 30, stretchBearing: 0,  stretchFactor: 1 },
+  // Elongated N-S (tall oval — good along rivers, parks)
+  { label: 'Circuit C', n: 6, bearingOffset: 0,  stretchBearing: 0,  stretchFactor: 1.8 },
+  // Elongated E-W (wide oval)
+  { label: 'Circuit D', n: 6, bearingOffset: 90, stretchBearing: 90, stretchFactor: 1.8 },
+  // Pentagon variant for more variety
+  { label: 'Circuit E', n: 5, bearingOffset: 18, stretchBearing: 0,  stretchFactor: 1 },
+];
+
 /**
- * Generate a single circular route, adjusting radius iteratively so the
- * actual OSRM distance matches targetKm as closely as possible.
+ * Generate a single loop route, adjusting radius iteratively so the
+ * actual OSRM trip distance matches targetKm as closely as possible.
  */
 async function generateSingleRoute(
   lat: number,
   lng: number,
   targetKm: number,
-  numWaypoints: number,
-  bearingOffset: number,
-  label: string
+  config: RouteConfig
 ): Promise<GeneratedRoute | null> {
-  // Initial radius: account for the fact that street routing is ~30% longer
-  // than straight-line distances (street network detour factor ≈ 1.3)
-  let radius = targetKm / (2 * Math.PI * 1.3);
+  const { label, n, bearingOffset, stretchBearing, stretchFactor } = config;
+
+  // Initial radius: for n waypoints + origin, total trip ≈ (n+1) * sideLength.
+  // For a hexagon at radius R: side ≈ R, so trip ≈ (n+1)*R → R ≈ targetKm/((n+1)*detour)
+  const detour = 1.35; // street network is ~35% longer than straight-line
+  let radius = targetKm / ((n + 1) * detour);
 
   for (let iter = 0; iter < 3; iter++) {
-    const waypoints = circleWaypoints(lat, lng, radius, numWaypoints, bearingOffset);
-    const allPoints: [number, number][] = [[lat, lng], ...waypoints, [lat, lng]];
-
-    const result = await osrmRoute(allPoints);
+    const waypoints = ellipseWaypoints(lat, lng, radius, n, bearingOffset, stretchBearing, stretchFactor);
+    const result = await osrmTrip([lat, lng], waypoints);
     if (!result) return null;
 
     const actualKm = result.distance / 1000;
     const error = Math.abs(actualKm - targetKm) / targetKm;
 
-    // Close enough (within 8%) or last iteration → return
     if (error < 0.08 || iter === 2) {
       return {
-        id: `${label}-${bearingOffset}-${numWaypoints}`,
+        id: `${label}-${n}-${bearingOffset}-${stretchFactor}`,
         label,
         coords: result.coords,
         distance: result.distance,
@@ -200,7 +248,7 @@ async function generateSingleRoute(
       };
     }
 
-    // Adjust radius proportionally to the distance error
+    // Scale radius proportionally to distance error
     radius = radius * (targetKm / actualKm);
   }
 
@@ -208,29 +256,19 @@ async function generateSingleRoute(
 }
 
 /**
- * Generate multiple circular routes with different shapes and orientations,
- * all targeting targetKm, sorted by closeness to that distance.
+ * Generate multiple loop routes with different shapes.
+ * Uses OSRM Trip API (TSP) for proper non-backtracking loops.
  */
 export async function generateMultipleRoutes(
   lat: number,
   lng: number,
   targetKm: number
 ): Promise<GeneratedRoute[]> {
-  const configs = [
-    { n: 4, bearing: 0,   label: 'Circuit A' },
-    { n: 4, bearing: 45,  label: 'Circuit B' },
-    { n: 3, bearing: 0,   label: 'Circuit C' },
-    { n: 3, bearing: 60,  label: 'Circuit D' },
-    { n: 4, bearing: 22,  label: 'Circuit E' },
-  ];
-
   const results = await Promise.allSettled(
-    configs.map(({ n, bearing, label }) =>
-      generateSingleRoute(lat, lng, targetKm, n, bearing, label)
-    )
+    ROUTE_CONFIGS.map((config) => generateSingleRoute(lat, lng, targetKm, config))
   );
 
-  const routes = results
+  return results
     .filter(
       (r): r is PromiseFulfilledResult<GeneratedRoute> =>
         r.status === 'fulfilled' && r.value !== null
@@ -240,6 +278,4 @@ export async function generateMultipleRoutes(
       (a, b) =>
         Math.abs(a.distance - targetKm * 1000) - Math.abs(b.distance - targetKm * 1000)
     );
-
-  return routes;
 }
