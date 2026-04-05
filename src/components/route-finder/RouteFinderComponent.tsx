@@ -420,10 +420,14 @@ export default function RouteFinderComponent() {
           {/* Route cards */}
           {routes.length > 0 && !isGenerating && (
             <div className="space-y-2 mt-1">
+              <p className="text-xs text-gray-400 text-center pb-1">
+                Tous les circuits sont visibles sur la carte · appuyez sur ▶ pour l&apos;aperçu animé
+              </p>
               {routes.map((route, i) => {
                 const dev = distanceDeviation(route.distance, selectedDistance);
                 const isSelected = route.id === selectedRouteId;
                 const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
+                const letter = String.fromCharCode(65 + i);
                 return (
                   <div
                     key={route.id}
@@ -433,10 +437,15 @@ export default function RouteFinderComponent() {
                         : 'border-transparent bg-gray-50 dark:bg-gray-800/50'
                     }`}
                   >
-                    {/* Color dot */}
-                    <div className="w-3 h-3 rounded-full flex-none" style={{ background: color }} />
+                    {/* Letter badge */}
+                    <div
+                      className="flex-none w-7 h-7 rounded-full flex items-center justify-center text-xs font-black text-white flex-shrink-0"
+                      style={{ background: color }}
+                    >
+                      {letter}
+                    </div>
 
-                    {/* Info (tap to select) */}
+                    {/* Info (tap to select + highlight on map) */}
                     <button
                       className="flex-1 min-w-0 text-left"
                       onClick={() => setSelectedRouteId(route.id)}

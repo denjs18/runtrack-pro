@@ -20,27 +20,25 @@ const UserPositionIcon = L.divIcon({
   iconAnchor: [10, 10],
 });
 
-function startIcon(color: string) {
+function startIcon(color: string, label: string, isSelected: boolean) {
+  const size = isSelected ? 36 : 26;
+  const fontSize = isSelected ? 13 : 10;
+  const shadow = isSelected ? '0 3px 10px rgba(0,0,0,0.45)' : '0 2px 6px rgba(0,0,0,0.3)';
   return L.divIcon({
     className: '',
     html: `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
       <div style="
         background:${color};color:white;border-radius:50%;
-        width:34px;height:34px;
+        width:${size}px;height:${size}px;
         display:flex;align-items:center;justify-content:center;
-        font-size:15px;
-        border:3px solid white;box-shadow:0 3px 10px rgba(0,0,0,0.4);
-      ">▶</div>
-      <div style="
-        background:${color};color:white;
-        font-size:9px;font-weight:700;letter-spacing:0.05em;
-        padding:1px 5px;border-radius:4px;
-        box-shadow:0 1px 4px rgba(0,0,0,0.3);
-        white-space:nowrap;
-      ">DÉPART</div>
+        font-size:${fontSize}px;font-weight:800;
+        border:${isSelected ? 3 : 2}px solid white;
+        box-shadow:${shadow};
+        transition:all 0.2s;
+      ">${label}</div>
     </div>`,
-    iconSize: [50, 52],
-    iconAnchor: [25, 10],
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   });
 }
 
@@ -307,25 +305,42 @@ export default function RouteFinderMap({
           />
         ))}
 
-        {/* Generated routes */}
+        {/* Generated routes — all visible, selected one highlighted */}
         {routes.map((route, i) => {
           const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
           const isSelected = route.id === selectedRouteId;
           const arrows = routeArrows[i];
+          const letter = String.fromCharCode(65 + i); // A, B, C…
 
           return (
             <span key={route.id}>
-              {/* Polyline */}
-              <Polyline
-                positions={route.coords}
-                pathOptions={{
-                  color,
-                  weight: isSelected ? 6 : 2.5,
-                  opacity: isSelected ? 1 : 0.45,
-                  lineCap: 'round',
-                  lineJoin: 'round',
-                }}
-              />
+              {/* Unselected routes: visible but thinner, drawn first (below) */}
+              {!isSelected && (
+                <Polyline
+                  positions={route.coords}
+                  pathOptions={{
+                    color,
+                    weight: 3.5,
+                    opacity: 0.65,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                  }}
+                />
+              )}
+
+              {/* Selected route: thick + on top */}
+              {isSelected && (
+                <Polyline
+                  positions={route.coords}
+                  pathOptions={{
+                    color,
+                    weight: 6,
+                    opacity: 1,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                  }}
+                />
+              )}
 
               {/* Direction arrows — only on selected route */}
               {isSelected &&
@@ -338,11 +353,11 @@ export default function RouteFinderMap({
                   />
                 ))}
 
-              {/* Start marker — only on selected route, hidden during animation */}
-              {isSelected && route.coords.length > 0 && animProgress === null && (
+              {/* Start marker on ALL routes, hidden during animation */}
+              {route.coords.length > 0 && animProgress === null && (
                 <Marker
                   position={route.coords[0]}
-                  icon={startIcon(color)}
+                  icon={startIcon(color, letter, isSelected)}
                   interactive={false}
                 />
               )}
