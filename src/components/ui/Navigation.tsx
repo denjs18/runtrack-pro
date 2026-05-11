@@ -2,14 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, History, User, Route, Circle } from 'lucide-react';
+import { Home, History, User, Route, Circle, Calendar, BarChart3, Map } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 const navItems = [
   { href: '/', icon: Home, label: 'Accueil' },
-  { href: '/activities', icon: History, label: 'Historique' },
-  { href: '/route-finder', icon: Route, label: 'Circuits' },
-  { href: '/profile', icon: User, label: 'Profil' },
+  { href: '/activities', icon: History, label: 'Activités' },
+  { href: '/training', icon: Calendar, label: 'Training' },
+  { href: '/stats', icon: BarChart3, label: 'Stats' },
+  { href: '/heatmap', icon: Map, label: 'Heatmap' },
 ];
 
 const TRACKING_FLAG = 'runtrack_is_tracking';

@@ -7,7 +7,6 @@ import {
   where,
   orderBy,
   limit as firestoreLimit,
-  startAfter,
   getCountFromServer,
   Timestamp,
 } from 'firebase/firestore';
@@ -31,7 +30,7 @@ export async function GET(request: NextRequest) {
     const total = countSnapshot.data().count;
 
     // Get paginated activities
-    let activitiesQuery = query(
+    const activitiesQuery = query(
       activitiesRef,
       where('userId', '==', userId),
       orderBy('startTime', 'desc'),
